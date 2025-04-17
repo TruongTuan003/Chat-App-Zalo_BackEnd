@@ -1,27 +1,31 @@
 const jwt = require("jsonwebtoken");
 const UserModel = require("../models/UserModel");
+const getUserDetailFromToken = require("../helpers/getUserDetailFromToken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "yourSecretKey";
-const TOKEN_EXPIRES_IN = "30m";
+const TOKEN_EXPIRES_IN = "30m"; // Updated to 30 minutes to match checkPhone.js
 const OTP_EXPIRES_IN = 60; // 60 seconds for OTP expiration
 
-async function checkPhone(request, response) {
+async function resendOTP(request, response) {
   try {
-    const { phone } = request.body;
+    const { token } = request.body;
 
-    const user = await UserModel.findOne({ phone }).select("-password");
-    if (!user) {
+    // Get user from token using the helper function
+    const user = await getUserDetailFromToken(token);
+    
+    if (!user || user.logout) {
       return response.status(400).json({
-        message: "User does not exist",
+        message: user?.message || "Invalid or expired token",
         error: true,
       });
     }
 
-    const token = jwt.sign({ id: user._id, phone: user.phone }, JWT_SECRET, {
+    // Generate new token
+    const newToken = jwt.sign({ id: user._id, phone: user.phone }, JWT_SECRET, {
       expiresIn: TOKEN_EXPIRES_IN,
     });
 
-    // Calculate token expiration time (15 minutes)
+    // Calculate token expiration time (30 minutes)
     const tokenExpirationTime = new Date();
     tokenExpirationTime.setMinutes(tokenExpirationTime.getMinutes() + 30);
 
@@ -30,10 +34,10 @@ async function checkPhone(request, response) {
     otpExpirationTime.setSeconds(otpExpirationTime.getSeconds() + OTP_EXPIRES_IN);
 
     return response.status(200).json({
-      message: "Phone number verified. Reset token generated.",
+      message: "New OTP token generated successfully",
       success: true,
       data: user,
-      token: token,
+      token: newToken,
       tokenExpiresAt: tokenExpirationTime.toISOString(),
       otpExpiresAt: otpExpirationTime.toISOString(),
       otpExpiresIn: OTP_EXPIRES_IN
@@ -46,4 +50,4 @@ async function checkPhone(request, response) {
   }
 }
 
-module.exports = checkPhone;
+module.exports = resendOTP; 
